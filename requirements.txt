@@ -1,0 +1,34 @@
+git+https://github.com/espnet/espnet.git
+espnet_model_zoo
+librosa
+numpy
+scipy
+samplerate
+soundfile
+soxr
+# torch
+transformers
+tqdm
+webrtcvad
+
+# for calculating intrusive SE metrics
+fastdtw
+fast_bss_eval
+pesq
+pysptk
+pystoi
+
+
+# for calculating the DNSMOS metric
+onnx2torch
+onnxruntime
+
+# for calculating the phoneme similarity metric
+levenshtein
+phonemizer
+
+# for text normalization in the WER metric
+openai-whisper
+
+# for SpeechBERTScore metric
+git+https://github.com/Takaaki-Saeki/DiscreteSpeechMetrics.git
