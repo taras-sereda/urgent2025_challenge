@@ -17,10 +17,10 @@ echo "=== Preparing FMA data ==="
 echo "Download FMA data"
 
 if [ ! -e "${output_dir}/download_fma.done" ]; then
-    wget -P ${output_dir}  https://os.unil.cloud.switch.ch/fma/fma_metadata.zip
+    wget -c -P ${output_dir}  https://os.unil.cloud.switch.ch/fma/fma_metadata.zip
     7z x "${output_dir}/fma_metadata.zip" -o"${output_dir}"
 
-    wget -P ${output_dir} https://os.unil.cloud.switch.ch/fma/fma_medium.zip
+    wget -c -P ${output_dir} https://os.unil.cloud.switch.ch/fma/fma_medium.zip
     echo "c67b69ea232021025fca9231fc1c7c1a063ab50b  ${output_dir}/fma_medium.zip"   | sha1sum -c -
     7z x "${output_dir}/fma_medium.zip" -o"${output_dir}"
 

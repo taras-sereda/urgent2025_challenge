@@ -33,7 +33,8 @@ touch "${output_dir}"/download_ears.done
 
 
 
-# Note: train/val split follows the paper (train: p001-p099, val: p100-p101)
+# Note: train/val split follows the original paper
+# train: p001-p099, val: p100-p101
 # https://arxiv.org/abs/2406.06185
 echo "[EARS] preparing data files"
 

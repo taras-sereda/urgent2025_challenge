@@ -20,15 +20,15 @@ if [ ! -e "${output_dir}/download_fsd50k.done" ]; then
     cd ${output_dir}
 
     # download meta data
-    wget -O FSD50K.ground_truth.zip https://zenodo.org/records/4060432/files/FSD50K.ground_truth.zip?download=1 && unzip FSD50K.ground_truth.zip
-    wget -O FSD50K.metadata.zip https://zenodo.org/records/4060432/files/FSD50K.metadata.zip?download=1 && unzip FSD50K.metadata.zip
-    wget -O FSD50K.doc.zip https://zenodo.org/records/4060432/files/FSD50K.doc.zip?download=1 && unzip FSD50K.doc.zip
+    wget -c -O FSD50K.ground_truth.zip https://zenodo.org/records/4060432/files/FSD50K.ground_truth.zip?download=1 && unzip FSD50K.ground_truth.zip
+    wget -c -O FSD50K.metadata.zip https://zenodo.org/records/4060432/files/FSD50K.metadata.zip?download=1 && unzip FSD50K.metadata.zip
+    wget -c -O FSD50K.doc.zip https://zenodo.org/records/4060432/files/FSD50K.doc.zip?download=1 && unzip FSD50K.doc.zip
     
     # download audio data
-    wget -O FSD50K.dev_audio.zip https://zenodo.org/records/4060432/files/FSD50K.dev_audio.zip?download=1
+    wget -c -O FSD50K.dev_audio.zip https://zenodo.org/records/4060432/files/FSD50K.dev_audio.zip?download=1
     seq -w 1 5 | xargs -I {} -P 5 bash -c '
         ii="{}"
-        wget -O FSD50K.dev_audio.z0${ii} https://zenodo.org/records/4060432/files/FSD50K.dev_audio.z0${ii}?download=1
+        wget -c -O FSD50K.dev_audio.z0${ii} https://zenodo.org/records/4060432/files/FSD50K.dev_audio.z0${ii}?download=1
     '
 
     # uncompress the zip file
