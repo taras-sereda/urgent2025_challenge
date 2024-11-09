@@ -6,155 +6,152 @@
 set -u
 set -o pipefail
 
-dnsmos_model_dir="./DNSMOS"
-output_dir="./commonvoice/cv-corpus-19.0-2024-09-13"
+track=$1  # track1 or track2
 
-echo "=== Preparing CommonVoice data ==="
-if [ ! -d "${dnsmos_model_dir}/DNSMOS" ]; then
-    echo "Please manually download all models (*.onnx) from https://github.com/microsoft/DNS-Challenge/tree/master/DNSMOS/DNSMOS and set the variable 'dnsmos_model_dir'"
-    exit 1
-fi
+output_dir="./commonvoice"
+mkdir -p "${output_dir}"
 
 
-#################################
-# Data preprocessing
-#################################
+langs=("de" "en" "es" "fr" "zh-CN")
+URLs=(
+    # Please fill in here
+    # german, english, spanish, french, and chinese (china)
+)
+
+echo "=== Preparing CommonVoice data for ${track} ==="
+
 mkdir -p tmp
 
-for lang in de es fr it zh-CN; do
-    # check if the data exists
-    if [ ! -d "${output_dir}/${lang}/clips" ]; then
-        echo "Please manually download the data (Common Voice Corpus 11.0) from https://commonvoice.mozilla.org/en/datasets and save them under the directory '$output_dir'"
-        echo "Refer to the README for more details"
-        exit 1
+if [ ! -f "${output_dir}/download_commonvoice.done" ]; then
+    # check if language id and URL are in the same order
+    for i in "${!langs[@]}"; do
+        lang="${langs[$i]}"
+        URL="${URLs[$i]}"
+        
+        filename="cv-corpus-19.0-2024-09-13-${lang}.tar.gz"
+
+        if [[ "$URL" != *"$filename"* ]]; then
+            echo "Link to commonvoice ${lang} may be wrong."
+            echo "Note that language IDs and corresponding URLs must be in the same order."
+            exit 1
+        fi
+    done
+
+    # download the commonvoice data
+    # all 5 files are downloaded in parallel
+    for i in "${!langs[@]}"; do
+        echo "${langs[$i]} ${URLs[$i]}"
+    done | xargs -n 2 -P ${!langs[@]} bash -c '
+        lang="$0"
+        URL="$1"
+        if [ ! -f "${output_dir}/cv19.0-${lang}.tar.gz" ]; then
+            wget "$URL" -O "'"${output_dir}"'/cv19.0-${lang}.tar.gz"
+        else
+            echo "${output_dir}/cv19.0-${lang}.tar.gz already exists. Please delete it if you want to download it again."
+        fi
+    ' 
+fi
+touch "${output_dir}/download_commonvoice.done"
+
+for lang in de en es fr zh-CN; do
+    # untar the .tar.gz file
+    output_dir_lang="${output_dir}/cv-corpus-19.0-2024-09-13/${lang}"
+    if [ ! -d "${output_dir_lang}/clips" ]; then
+        echo "[CommonVoice-${lang}] extracting audio files from ${output_dir}/cv19.0-${lang}.tar.gz"
+        python ./utils/tar_extractor.py -m 1000 \
+            -i ${output_dir}/cv19.0-${lang}.tar.gz \
+            -o ${output_dir} \
+            --skip_existing --skip_errors
     fi
 
-    # bandwitdh estimation
-    BW_EST_FILE=tmp/commonvoice_19.0_${lang}.json
-    if [ ! -f ${BW_EST_FILE} ]; then
-        echo "[CommonVoice] ${lang}: estimating audio bandwidth"
-        OMP_NUM_THREADS=1 python utils/estimate_audio_bandwidth.py \
-            --audio_dir "${output_dir}/${lang}/clips/" \
-            --audio_format mp3 \
-            --chunksize 1000 \
-            --nj 16 \
-            --outfile ${BW_EST_FILE}
-    else
-        echo "Estimated bandwidth file already exists. Delete ${BW_EST_FILE} if you want to re-estimate."
-    fi
+    for split in train dev; do
+        echo "=== Preparing CommonVoice ${lang} ${split} data ==="
+
+        if [ $split == "train" ]; then
+            split_track="${split}_${track}"
+            split_name=$split_track
+        else
+            split_track=$split
+            split_name=validation
+        fi
+
+        BW_EST_FILE="tmp/commonvoice_19.0_${lang}_${split_track}.json"
+        if [ ! -f ${BW_EST_FILE} ]; then
+            echo "[CommonVoice-${lang}] resolve file paths"
+
+            # .json.gz file containing bandwidth information for the 1st-track data is provided
+            BW_EST_FILE_JSON_GZ="./datafiles/commonvoice/commonvoice_19.0_${lang}_${split_track}.json.gz"
+            gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
+
+            # BW_EST_FILE_TMP only has file names
+            # Resolve the path here
+            python utils/resolve_file_path.py \
+                --audio_dir ${output_dir_lang}/clips \
+                --json_file ${BW_EST_FILE} \
+                --outfile ${BW_EST_FILE} \
+                --audio_format mp3
+        else
+            echo "Estimated bandwidth file already exists. Delete ${BW_EST_FILE} if you want to re-estimate."
+        fi
+
+        RESAMP_SCP_FILE=tmp/commonvoice_19.0_${lang}_resampled_${split_track}.scp
+        if [ ! -f ${RESAMP_SCP_FILE} ]; then
+            echo "[CommonVoice-${lang}] resampling to estimated audio bandwidth"
+            OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \
+            --bandwidth_data ${BW_EST_FILE} \
+            --out_scpfile ${RESAMP_SCP_FILE} \
+            --outdir "${output_dir_lang}/resampled/${split_track}" \
+            --max_files 5000 \
+            --nj 8 \
+            --chunksize 1000
+        else
+            echo "Resampled scp file already exists. Delete ${RESAMP_SCP_FILE} if you want to re-resample."
+        fi
+
+        echo "[CommonVoice-${lang}] preparing data files"
+        python utils/get_commonvoice_subset_split.py \
+            --scp_path ${RESAMP_SCP_FILE} \
+            --tsv_path "${output_dir_lang}/${split}.tsv" \
+            --outfile commonvoice_19.0_${lang}_resampled_${split_name}.scp
+
+        # "other" split is included in training data in track2
+        if [ $split_track == "train_track2" ]; then
+            python utils/get_commonvoice_subset_split.py \
+                --scp_path ${RESAMP_SCP_FILE} \
+                --tsv_path "${output_dir_lang}/other.tsv" \
+                --outfile commonvoice_19.0_${lang}_resampled_other.scp
+            
+            cat commonvoice_19.0_${lang}_resampled_other.scp >> commonvoice_19.0_${lang}_resampled_${split_name}.scp
+            rm commonvoice_19.0_${lang}_resampled_other.scp
+            sort -k1 commonvoice_19.0_${lang}_resampled_${split_name}.scp -o commonvoice_19.0_${lang}_resampled_${split_name}.scp
+        fi
+            
+        awk 'FNR==NR {arr[$2]=$1; next} {print($1" cv11_"arr[$1".mp3"])}' \
+            "${output_dir_lang}/${split}.tsv" \
+            commonvoice_19.0_${lang}_resampled_${split_name}.scp \
+            > commonvoice_19.0_${lang}_resampled_${split_name}.utt2spk
+
+        python utils/get_commonvoice_transcript.py \
+            --audio_scp commonvoice_19.0_${lang}_resampled_${split_name}.scp \
+            --tsv_path "${output_dir_lang}/${split}.tsv" \
+            --outfile commonvoice_19.0_${lang}_resampled_${split_name}.text
+
+    done
 done
 
-<< 'COMMENT'
-RESAMP_SCP_FILE=tmp/commonvoice_11.0_en_resampled.scp
-if [ ! -f ${RESAMP_SCP_FILE} ]; then
-    echo "[CommonVoice] resampling to estimated audio bandwidth"
-    OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \
-       --bandwidth_data ${BW_EST_FILE} \
-       --out_scpfile ${RESAMP_SCP_FILE} \
-       --outdir "${output_dir}/resampled" \
-       --max_files 5000 \
-       --nj 8 \
-       --chunksize 1000
-else
-    echo "Resampled scp file already exists. Delete ${RESAMP_SCP_FILE} if you want to re-resample."
-fi
-
-#################################
-# Data filtering based on DNSMOS
-#################################
-DNSMOS_JSON_FILE=tmp/commonvoice_11.0_en_resampled_dnsmos.json
-DNSMOS_GZ_FILE="data/`basename ${DNSMOS_JSON_FILE}`.gz"
-if [ -f ${DNSMOS_GZ_FILE} ]; then
-    gunzip -c ${DNSMOS_GZ_FILE} > ${DNSMOS_JSON_FILE}
-fi
-if [ ! -f ${DNSMOS_JSON_FILE} ]; then
-    echo "[CommonVoice] calculating DNSMOS scores"
-    python utils/get_dnsmos.py \
-        --json_path "${RESAMP_SCP_FILE}" \
-        --outfile "${DNSMOS_JSON_FILE}" \
-        --use_gpu True \
-        --convert_to_torch True \
-        --primary_model "${dnsmos_model_dir}/DNSMOS/sig_bak_ovr.onnx" \
-        --p808_model "${dnsmos_model_dir}/DNSMOS/model_v8.onnx" \
-        --nsplits 2 \
-        --job 2
-else
-    echo "DNSMOS json file already exists. Delete ${DNSMOS_JSON_FILE} if you want to re-estimate."
-fi
-
-# remove non-speech samples
-VAD_SCP_FILE=tmp/commonvoice_11.0_en_resampled_filtered_vad.scp
-if [ ! -f ${VAD_SCP_FILE} ]; then
-    echo "[CommonVoice] filtering via VAD"
-    OMP_NUM_THREADS=1 python utils/filter_via_vad.py \
-        --scp_path "${RESAMP_SCP_FILE}" \
-        --outfile "${VAD_SCP_FILE}" \
-        --vad_mode 2 \
-        --threshold 0.2 \
-        --nj 8 \
-        --chunksize 200
-else
-    echo "VAD scp file already exists. Delete ${VAD_SCP_FILE} if you want to re-estimate."
-fi
-
-# remove low-quality samples
-FILTERED_SCP_FILE=tmp/commonvoice_11.0_en_resampled_filtered_dnsmos.scp
-if [ ! -f ${FILTERED_SCP_FILE} ]; then
-    echo "[CommonVoice] filtering via DNSMOS"
-    python utils/filter_via_dnsmos.py \
-        --scp_path "${VAD_SCP_FILE}" \
-        --json_path "${DNSMOS_JSON_FILE}" \
-        --outfile "${FILTERED_SCP_FILE}" \
-        --score_name OVRL --threshold 3.0 \
-        --score_name SIG --threshold 3.0 \
-        --score_name BAK --threshold 3.0
-else
-    echo "Filtered scp file already exists. Delete ${FILTERED_SCP_FILE} if you want to re-estimate."
-fi
-
-echo "[CommonVoice] preparing data files"
-python utils/get_commonvoice_subset_split.py \
-    --scp_path tmp/commonvoice_11.0_en_resampled_filtered_dnsmos.scp \
-    --tsv_path "${output_dir}/train.tsv" \
-    --outfile commonvoice_11.0_en_resampled_filtered_train.scp
-
-python utils/get_commonvoice_subset_split.py \
-    --scp_path tmp/commonvoice_11.0_en_resampled_filtered_dnsmos.scp \
-    --tsv_path "${output_dir}/dev.tsv" \
-    --outfile commonvoice_11.0_en_resampled_filtered_validation.scp
-
-awk 'FNR==NR {arr[$2]=$1; next} {print($1" cv11_"arr[$1".mp3"])}' \
-    "${output_dir}"/train.tsv \
-    commonvoice_11.0_en_resampled_filtered_train.scp \
-    > commonvoice_11.0_en_resampled_filtered_train.utt2spk
-awk 'FNR==NR {arr[$2]=$1; next} {print($1" cv11_"arr[$1".mp3"])}' \
-    "${output_dir}"/dev.tsv \
-    commonvoice_11.0_en_resampled_filtered_validation.scp \
-    > commonvoice_11.0_en_resampled_filtered_validation.utt2spk
-
-python utils/get_commonvoice_transcript.py \
-    --audio_scp commonvoice_11.0_en_resampled_filtered_train.scp \
-    --tsv_path "${output_dir}/train.tsv" \
-    --outfile commonvoice_11.0_en_resampled_filtered_train.text
-
-python utils/get_commonvoice_transcript.py \
-    --audio_scp commonvoice_11.0_en_resampled_filtered_validation.scp \
-    --tsv_path "${output_dir}/dev.tsv" \
-    --outfile commonvoice_11.0_en_resampled_filtered_validation.text
 
 #--------------------------------
-# Output file:
+# Output file (for each ${lang} and ${track}):
 # -------------------------------
-# commonvoice_11.0_en_resampled_filtered_train.scp
-#    - scp file containing filtered samples (after resampling) for training
-# commonvoice_11.0_en_resampled_filtered_train.utt2spk
-#    - speaker mapping for filtered training samples
-# commonvoice_11.0_en_resampled_filtered_train.text
-#    - transcript for filtered training samples
-# commonvoice_11.0_en_resampled_filtered_validation.scp
-#    - scp file containing filtered samples (after resampling) for validation
-# commonvoice_11.0_en_resampled_filtered_validation.utt2spk
-#    - speaker mapping for filtered validation samples
-# commonvoice_11.0_en_resampled_filtered_validation.text
-#    - transcript for filtered validation samples
-COMMENT
+# commonvoice_19.0_${lang}_resampled_train_${track}.scp
+#    - scp file containing samples (after resampling) for training
+# commonvoice_19.0_${lang}_resampled_train_${track}.utt2spk
+#    - speaker mapping for training samples
+# commonvoice_19.0_${lang}_resampled_train_${track}.text
+#    - transcript for training samples
+# commonvoice_19.0_${lang}_resampled_validation.scp
+#    - scp file containing samples (after resampling) for validation
+# commonvoice_19.0_${lang}_resampled_validation.utt2spk
+#    - speaker mapping for validation samples
+# commonvoice_19.0_${lang}_resampled_validation.text
+#    - transcript for validation samples
