@@ -155,7 +155,7 @@ if __name__ == "__main__":
         raise ValueError("Unrecognized file extension: %s" % args.json_path)
     keys = list(data.keys())
     size = len(keys)
-    assert 1<= args.job <= args.nsplits <= size, (args.nsplits, args.job, size)
+    assert 1 <= args.job <= args.nsplits <= size, (args.nsplits, args.job, size)
     interval = size // args.nsplits
     start = (args.job - 1) * interval
     end = size if args.job == args.nsplits else start + interval

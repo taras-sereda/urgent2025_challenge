@@ -1,17 +1,17 @@
 import json
-from functools import partial
 import math
+from functools import partial
 from pathlib import Path
+
+import soundfile as sf
 
 # import librosa
 import soxr
-import soundfile as sf
 from tqdm.contrib.concurrent import process_map
-
 
 sampling_rates = (8000, 16000, 22050, 24000, 32000, 44100, 48000)
 
-
+"""
 def resample_to_estimated_bandwidth(
     uid_path_bw, idx, max_files_per_dir, num_digits, outdir
 ):
@@ -32,8 +32,46 @@ def resample_to_estimated_bandwidth(
     audio = soxr.resample(audio, fs, est_fs)
 
     subdir = f"{idx // max_files_per_dir:0{num_digits}x}"
-    outfile = Path(outdir) / subdir / (uid + ".wav")
+    # outfile = Path(outdir) / subdir / (uid + ".wav")
+    outfile = Path(outdir) / subdir / (uid + ".flac")
     outfile.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(outfile), audio, est_fs)
+    return uid, outfile, est_fs
+"""
+
+
+# modified to skip samples already resampled
+def resample_to_estimated_bandwidth(
+    uid_path_bw, idx, max_files_per_dir, num_digits, outdir
+):
+    uid, audio_path, est_bandwidth = uid_path_bw
+
+    for sr in sampling_rates:
+        if est_bandwidth * 2 <= sr:
+            est_fs = sr
+            break
+    else:
+        est_fs = sampling_rates[-1]
+
+    subdir = f"{idx // max_files_per_dir:0{num_digits}x}"
+    # outfile = Path(outdir) / subdir / (uid + ".wav")
+    outfile = Path(outdir) / subdir / (uid + ".flac")
+
+    if outfile.exists():
+        return uid, outfile, est_fs
+
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        audio, fs = sf.read(audio_path)
+    except:
+        print(f"Error: cannot open audio file '{audio_path}'. Skipping it", flush=True)
+        return
+
+    if est_fs == fs:
+        return uid, audio_path, fs
+
+    audio = soxr.resample(audio, fs, est_fs)
     sf.write(str(outfile), audio, est_fs)
     return uid, outfile, est_fs
 
