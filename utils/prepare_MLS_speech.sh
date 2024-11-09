@@ -8,7 +8,7 @@ set -o pipefail
 
 track=$1  # track1 or track2
 
-output_dir="/mnt/work-qnap/saijo/mls_delete"
+output_dir="./mls_segments"  # please do not change output_dir
 mkdir -p "${output_dir}"
 
 if [ $track == "track1" ]; then
@@ -19,7 +19,6 @@ else
 fi
 
 echo "=== Preparing MLS data for ${track} ==="
-
 
 for lang in "${langs[@]}"; do
     for split in train dev; do
