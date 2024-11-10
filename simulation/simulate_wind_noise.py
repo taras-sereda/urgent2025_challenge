@@ -1,13 +1,12 @@
 """Example to generate a wind noise signal."""
 
-from pathlib import Path
 import argparse
 import os
-import shutil
-import yaml
+from pathlib import Path
 
 import numpy as np
 import tqdm
+import yaml
 
 # Need access to the WindNoiseGenerator library (file: sc_wind_noise_generator.py) presented in D. Mirabilii et al. "Simulating wind noise with airflow speed-dependent characteristics,” in Int. Workshop on Acoustic Signal Enhancement, Sept. 2022"
 # Please ask the authors as we are not responsible for the distribution of their code
@@ -28,10 +27,12 @@ print(config)
 # params = {**wind_params, **params}
 
 if os.path.exists(args.output_dir):
-    # shutil.rmtree(args.output_dir)
-    raise RuntimeError(f"{args.output_dir} already exists")
+    raise RuntimeError(
+        f"{args.output_dir} already exists."
+        "Please delete it if you want to run again."
+    )
+args.output_dir.mkdir(parents=True)
 
-args.output_dir.mkdir()
 scp = open(args.output_dir / "wind_noise.scp", "w")
 for seed, sample_rate in zip(config["seeds"], config["sample_rates"]):
     output_dir = args.output_dir / f"wind_noise_{sample_rate}hz"

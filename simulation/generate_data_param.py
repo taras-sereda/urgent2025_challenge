@@ -6,11 +6,9 @@ from pathlib import Path
 import librosa
 import numpy as np
 import soundfile as sf
-from tqdm import tqdm
-
 from espnet2.utils import config_argparse
 from espnet2.utils.types import str2bool
-
+from tqdm import tqdm
 
 # Avaiable sampling rates for bandwidth limitation
 SAMPLE_RATES = (8000, 16000, 22050, 24000, 32000, 44100, 48000)
@@ -55,6 +53,79 @@ def bandwidth_limitation(fs: int = 16000, res_type="random"):
         res_type = "none"
         fs_new = fs
     return res_type, fs_new
+
+
+def packet_loss(
+    speech_length, fs, packet_duration_ms, packet_loss_rate, max_continuous_packet_loss
+):
+    """Returns a list of indices (of packets) that are zeroed out."""
+
+    # speech duration in ms and the number of packets
+    speech_duration_ms = speech_length / fs * 1000
+    num_packets = int(speech_duration_ms // packet_duration_ms)
+
+    # randomly select the packet loss rate and calculate the packet loss duration
+    packet_loss_rate = np.random.uniform(*packet_loss_rate)
+    packet_loss_duration_ms = packet_loss_rate * speech_duration_ms
+
+    # calculate the number of packets to be zeroed out
+    num_packet_loss = int(round(packet_loss_duration_ms / packet_duration_ms, 0))
+
+    # list of length of each packet loss
+    packet_loss_lengths = []
+    for _ in range(num_packet_loss):
+        num_continuous_packet_loss = np.random.randint(1, max_continuous_packet_loss)
+        packet_loss_lengths.append(num_continuous_packet_loss)
+
+        if num_packet_loss - sum(packet_loss_lengths) <= max_continuous_packet_loss:
+            packet_loss_lengths.append(num_packet_loss - sum(packet_loss_lengths))
+            break
+
+    packet_loss_start_indices = np.random.choice(
+        range(num_packets), len(packet_loss_lengths), replace=False
+    )
+    packet_loss_indices = []
+    for idx, length in zip(packet_loss_start_indices, packet_loss_lengths):
+        packet_loss_indices += list(range(idx, idx + length))
+
+    return list(set(packet_loss_indices))
+
+
+def loudness_transition(
+    speech_length,
+    fs,
+    num_peaks,
+    duration_range,
+    peak_db_range,
+):
+    """Returns a list of start, peak, and end indices of loudness transition"""
+    start_list, peak_list, end_list, gain_db_list = [], [], [], []
+    for n in range(num_peaks):
+        transition_duration = np.random.uniform(*duration_range)
+        transition_length = int(transition_duration * fs)
+
+        if transition_length >= speech_length // num_peaks:
+            transition_length = speech_length // num_peaks
+            start_idx = 0
+        else:
+            start_idx = np.random.randint(
+                0, speech_length // num_peaks - transition_length
+            )
+        end_idx = start_idx + transition_length
+
+        # index of the loudness peak
+        peak_idx = np.random.randint(start_idx, end_idx)
+
+        # gain coefficient at the peak point
+        gain_db = np.random.uniform(*peak_db_range)
+        # make it negative with a 50% chance
+        gain_db = gain_db if np.random.random() > 0.5 else -gain_db
+
+        start_list.append(start_idx)
+        end_list.append(end_idx)
+        peak_list.append(peak_idx)
+        gain_db_list.append(gain_db)
+    return start_list, peak_list, end_list, gain_db_list
 
 
 def weighted_sample(population, weights, k, replace=True, rng=np.random):
@@ -123,6 +194,16 @@ def main(args):
                 noise_dic[int(fs)][uid] = audio_path
     used_noise_dic = {fs: {} for fs in noise_dic.keys()}
 
+    # scp file of noise samples (three columns per line: uid, fs, audio_path)
+    wind_noise_dic = defaultdict(dict)
+    for scp in args.wind_noise_scps:
+        with open(scp, "r") as f:
+            for line in f:
+                uid, fs, audio_path = line.strip().split()
+                assert uid not in wind_noise_dic[int(fs)], (uid, fs)
+                wind_noise_dic[int(fs)][uid] = audio_path
+    used_wind_noise_dic = {fs: {} for fs in wind_noise_dic.keys()}
+
     # [optional] scp file of RIR samples (three columns per line: uid, fs, audio_path)
     rir_dic = None
     if args.rir_scps is not None and args.prob_reverberation > 0.0:
@@ -133,7 +214,7 @@ def main(args):
                     uid, fs, audio_path = line.strip().split()
                     assert uid not in rir_dic[int(fs)], (uid, fs)
                     rir_dic[int(fs)][uid] = audio_path
-    used_rir_dic = {fs: {} for fs in rir_dic.keys()}
+    used_rir_dic = {fs: {} for fs in rir_dic.keys()} if rir_dic is not None else None
 
     f = open(Path(args.log_dir) / "meta.tsv", "w")
     headers = [
@@ -151,7 +232,15 @@ def main(args):
 
     outdir = Path(args.output_dir)
     snr_range = (args.snr_low_bound, args.snr_high_bound)
-    clipping_range = (args.clipping_min_quantile, args.clipping_max_quantile)
+    wind_noise_snr_range = (
+        args.wind_noise_snr_low_bound,
+        args.wind_noise_snr_high_bound,
+    )
+
+    augmentations = list(args.augmentations.keys())
+    weight_augmentations = [v["weight"] for v in args.augmentations.values()]
+    weight_augmentations = weight_augmentations / np.sum(weight_augmentations)
+
     count = 0
     for fs in sorted(speech_dic.keys(), reverse=True):
         for uid, audio_path in tqdm(speech_dic[fs].items()):
@@ -165,30 +254,47 @@ def main(args):
                 # Sometimes the acutal loaded audio's length differs from af.frames
                 speech_length = sf.read(audio_path)[0].shape[0]
 
-            # Select an additional augmentation for each repeat
-            opts = {
-                "population": args.augmentations,
-                "weights": args.weight_augmentations,
-                "k": args.repeat_per_utt,
-            }
-            if args.repeat_per_utt > len(args.augmentations):
-                augmentations = weighted_sample(**opts, replace=True)
-            else:
-                augmentations = weighted_sample(**opts, replace=False)
-
             for n in range(args.repeat_per_utt):
+                use_wind_noise = np.random.random() < args.prob_wind_noise
+
+                num_aug = np.random.choice(
+                    list(args.num_augmentations.keys()),
+                    p=list(args.num_augmentations.values()),
+                )
+                if num_aug == 0:
+                    aug = "none"
+                else:
+                    aug = np.random.choice(
+                        augmentations,
+                        p=weight_augmentations,
+                        size=num_aug,
+                        replace=False,
+                    )
+                    # As wind-noise simulation include clipping,
+                    # we exclude clipping from augmentation list
+                    while use_wind_noise and "clipping" in aug:
+                        aug = np.random.choice(
+                            augmentations,
+                            p=weight_augmentations,
+                            size=num_aug,
+                            replace=False,
+                        )
+
                 info = process_one_sample(
                     args,
                     speech_length,
                     fs,
                     noise_dic=noise_dic,
                     used_noise_dic=used_noise_dic,
+                    wind_noise_dic=wind_noise_dic,
+                    used_wind_noise_dic=used_wind_noise_dic,
+                    use_wind_noise=use_wind_noise,
                     snr_range=snr_range,
+                    wind_noise_snr_range=wind_noise_snr_range,
                     store_noise=args.store_noise,
                     rir_dic=rir_dic,
                     used_rir_dic=used_rir_dic,
-                    augmentation=augmentations[n],
-                    clipping_range=clipping_range,
+                    augmentations=aug,
                     force_1ch=True,
                 )
                 count += 1
@@ -221,21 +327,48 @@ def process_one_sample(
     fs,
     noise_dic,
     used_noise_dic,
+    wind_noise_dic,
+    used_wind_noise_dic,
     snr_range,
+    wind_noise_snr_range,
+    use_wind_noise,
     store_noise=False,
     rir_dic=None,
     used_rir_dic=None,
-    augmentation="none",
-    clipping_range=((0.1, 0.1), (0.9, 0.9)),
+    augmentations="none",
     force_1ch=True,
 ):
     # select a noise sample
-    noise_uid, noise = select_sample(
-        fs, noise_dic, used_sample_dic=used_noise_dic, reuse_sample=args.reuse_noise
-    )
+    if use_wind_noise:
+        noise_uid, _ = select_sample(
+            fs, wind_noise_dic, used_sample_dic=used_wind_noise_dic, reuse_sample=False
+        )
+
+        # wind-noise simulation config
+        wn_conf = args.wind_noise_config
+        threshold = np.random.uniform(*wn_conf["threshold"])
+        ratio = np.random.uniform(*wn_conf["ratio"])
+        attack = np.random.uniform(*wn_conf["attack"])
+        release = np.random.uniform(*wn_conf["release"])
+        sc_gain = np.random.uniform(*wn_conf["sc_gain"])
+        clipping_threshold = np.random.uniform(*wn_conf["clipping_threshold"])
+        clipping = np.random.random() < wn_conf["clipping_chance"]
+        augmentation_config = (
+            "wind_noise("
+            f"threshold={threshold},ratio={ratio},"
+            f"attack={attack},release={release},"
+            f"sc_gain={sc_gain},clipping={clipping},"
+            f"clipping_threshold={clipping_threshold})/"
+        )
+        snr = np.random.uniform(*wind_noise_snr_range)
+    else:
+        noise_uid, noise = select_sample(
+            fs, noise_dic, used_sample_dic=used_noise_dic, reuse_sample=args.reuse_noise
+        )
+        augmentation_config = ""
+        snr = np.random.uniform(*snr_range)
     if noise_uid is None:
         raise ValueError(f"Noise sample not found for fs={fs}+ Hz")
-    snr = np.random.uniform(*snr_range)
 
     # select a room impulse response (RIR)
     if (
@@ -250,23 +383,87 @@ def process_one_sample(
         )
 
     # apply an additional augmentation
-    if augmentation == "none":
-        pass
-    elif augmentation == "bandwidth_limitation":
-        res_type, fs_new = bandwidth_limitation(fs=fs, res_type="random")
-        augmentation = augmentation + f"-{res_type}->{fs_new}"
-    elif augmentation == "clipping":
-        min_quantile = np.random.uniform(clipping_range[0][0], clipping_range[0][1])
-        max_quantile = np.random.uniform(clipping_range[1][0], clipping_range[1][1])
-        augmentation = augmentation + f"(min={min_quantile},max={max_quantile})"
+    if isinstance(augmentations, str) and augmentations == "none":
+        if not use_wind_noise:
+            augmentation_config = "none"
     else:
-        raise NotImplementedError(augmentation)
+        for i, augmentation in enumerate(augmentations):
+            this_aug = args.augmentations[augmentation]
+            if augmentation == "bandwidth_limitation":
+                res_type, fs_new = bandwidth_limitation(fs=fs, res_type="random")
+                augmentation_config += f"{augmentation}-{res_type}->{fs_new}"
+            elif augmentation == "clipping":
+                min_quantile = np.random.uniform(*this_aug["clipping_min_quantile"])
+                max_quantile = np.random.uniform(*this_aug["clipping_max_quantile"])
+                augmentation_config += (
+                    f"{augmentation}(min={min_quantile},max={max_quantile})"
+                )
+            elif augmentation == "loudness_transition":
+                num_peaks = np.random.randint(*this_aug["num_peaks"])
+                start_list, peak_list, end_list, gain_db_list = loudness_transition(
+                    speech_length,
+                    fs,
+                    num_peaks,
+                    this_aug["duration"],
+                    this_aug["peak_db"],
+                )
+                augmentation_config += (
+                    f"{augmentation}"
+                    f"(start={start_list},peak={peak_list},"
+                    f"end={end_list},gain_db={gain_db_list})"
+                )
+
+            elif augmentation == "nonflat_freq_res":
+                # low- and high-shelf filters
+                low_shelf_hz = np.random.randint(*this_aug["low_shelf_hz"])
+                high_shelf_hz = np.random.randint(*this_aug["high_shelf_hz"])
+                low_shelf_db = np.random.uniform(*this_aug["low_shelf_db"])
+                high_shelf_db = np.random.uniform(*this_aug["high_shelf_db"])
+
+                # peak filter
+                num_peaks = np.random.randint(*this_aug["num_peaks"])
+                peak_hz = [
+                    np.random.randint(*this_aug["peak_hz"]) for _ in range(num_peaks)
+                ]
+                peak_db = [
+                    np.random.uniform(*this_aug["peak_db"]) for _ in range(num_peaks)
+                ]
+
+                augmentation_config += (
+                    f"{augmentation}"
+                    f"(low_shelf_hz={low_shelf_hz},high_shelf_hz={high_shelf_hz},"
+                    f"low_shelf_db={low_shelf_db},high_shelf_db={high_shelf_db},"
+                    f"peak_hz={peak_hz},peak_db={peak_db})"
+                )
+            elif augmentation == "codec":
+                vbr_quality = np.random.uniform(*this_aug["vbr_quality"])
+                augmentation_config += f"{augmentation}(vbr_quality={vbr_quality})"
+            elif augmentation == "packet_loss":
+                packet_duration_ms = this_aug["packet_duration_ms"]
+                packet_loss_indices = packet_loss(
+                    speech_length,
+                    fs,
+                    packet_duration_ms,
+                    this_aug["packet_loss_rate"],
+                    this_aug["max_continuous_packet_loss"],
+                )
+                augmentation_config += (
+                    f"{augmentation}"
+                    f"(packet_loss_indices={packet_loss_indices},"
+                    f"packet_duration_ms={packet_duration_ms})"
+                )
+            else:
+                raise NotImplementedError(augmentation)
+
+            # / is used for splitting multiple augmentation configuration
+            if i < len(augmentations) - 1:
+                augmentation_config += "/"
 
     meta = {
         "noise_uid": "none" if noise_uid is None else noise_uid,
         "rir_uid": "none" if rir_uid is None else rir_uid,
         "snr": snr,
-        "augmentation": augmentation,
+        "augmentation": augmentation_config,
         "fs": fs,
         "length": speech_length,
     }
@@ -399,6 +596,46 @@ def get_parser(parser=None):
         help="Whether or not to store parallel noise samples",
     )
 
+    group = parser.add_argument_group(description="Wind-noise related")
+    group.add_argument(
+        "--wind_noise_scps",
+        type=str,
+        nargs="+",
+        help="Path to the scp file containing wind noise samples\n"
+        "(If not provided, wind noise will not be applied)",
+    )
+    group.add_argument(
+        "--prob_wind_noise",
+        type=float,
+        default=0.05,
+        help="Probability of using wind noise instead of other environmental noise"
+        "to input speech samples",
+    )
+    group.add_argument(
+        "--wind_noise_config",
+        type=dict,
+        default={},
+        help="Whether or not to allow reusing wind noise samples",
+    )
+    group.add_argument(
+        "--reuse_wind_noise",
+        type=str2bool,
+        default=False,
+        help="Whether or not to allow reusing wind noise samples",
+    )
+    group.add_argument(
+        "--wind_noise_snr_low_bound",
+        type=float,
+        default=-5.0,
+        help="Lower bound of signal-to-noise ratio (SNR) in dB",
+    )
+    group.add_argument(
+        "--wind_noise_snr_high_bound",
+        type=float,
+        default=20.0,
+        help="Higher bound of signal-to-noise ratio (SNR) in dB",
+    )
+
     group = parser.add_argument_group(description="Reverberation related")
     group.add_argument(
         "--rir_scps",
@@ -423,37 +660,15 @@ def get_parser(parser=None):
     group = parser.add_argument_group(description="Additional augmentation related")
     group.add_argument(
         "--augmentations",
-        default=["none"],
-        nargs="+",
-        choices=AUGMENTATIONS,
-        help="List of mutually-exclusive augmentations to apply to input speech "
+        default=dict(none=dict(weight=1.0)),
+        help="Dict of mutually-exclusive augmentations to apply to input speech "
         "samples",
     )
     group.add_argument(
-        "--weight_augmentations",
-        type=float,
-        default=[1.0],
-        nargs="+",
-        help="Non-zero weights of applying each augmentation option to input speech "
+        "--num_augmentations",
+        default=dict(),
+        help="Dict of mutually-exclusive augmentations to apply to input speech "
         "samples",
-    )
-    group.add_argument(
-        "--clipping_min_quantile",
-        type=float,
-        default=[0.1],
-        nargs="+",
-        help="Range of the lower quantile in clipping\n"
-        "If only one value is provided, it will be used as a fixed lower bound;\n"
-        "otherwise, the lower bound will be randomly selected from the given range.",
-    )
-    group.add_argument(
-        "--clipping_max_quantile",
-        type=float,
-        default=[0.9],
-        nargs="+",
-        help="Range of the higher quantile in clipping\n"
-        "(If only one value is provided, it will be used as a fixed upper bound;\n"
-        "otherwise, the upper bound will be randomly selected from the given range.",
     )
     parser.set_defaults(required=["speech_scps", "log_dir", "output_dir", "noise_scps"])
     return parser
@@ -469,24 +684,6 @@ if __name__ == "__main__":
         assert len(args.speech_text) == len(args.speech_scps)
     if args.prob_reverberation > 0:
         assert args.rir_scps
-    for w in args.weight_augmentations:
-        assert w > 0.0, w
-    assert len(args.weight_augmentations) == len(args.augmentations)
-
-    for name in ("clipping_min_quantile", "clipping_max_quantile"):
-        cmq = getattr(args, name)
-        if len(cmq) == 1:
-            setattr(args, name, (cmq[0], cmq[0]))
-        elif len(cmq) == 2:
-            if cmq[0] > cmq[1]:
-                raise ValueError(
-                    f"Clipping quantile range should be in ascending order: {cmq}"
-                )
-        else:
-            raise ValueError(f"Invalid clipping quantile range: {cmq}")
-        for q in cmq:
-            assert 0.0 <= q <= 1.0, q
-    assert min(args.clipping_max_quantile) > max(args.clipping_min_quantile)
 
     outdir = Path(args.output_dir)
     (outdir / "clean").mkdir(parents=True, exist_ok=True)
