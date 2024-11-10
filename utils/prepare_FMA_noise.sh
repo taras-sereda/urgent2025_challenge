@@ -73,6 +73,8 @@ if [ ! -f ${RESAMP_SCP_FILE_TRAIN} ]; then
         --outdir "${output_dir}/resampled/fma_medium" \
         --nj 8 \
         --chunksize 1000
+    # add dataset name to make utt-ids unique
+    awk -v additional="fma_" '{print additional $1, $2, $3}' $RESAMP_SCP_FILE_TRAIN > ./temp && mv ./temp $RESAMP_SCP_FILE_TRAIN
 else
     echo "Resampled scp file already exists. Delete ${RESAMP_SCP_FILE_TRAIN} if you want to re-resample."
 fi
@@ -86,6 +88,8 @@ if [ ! -f ${RESAMP_SCP_FILE_VALID} ]; then
         --outdir "${output_dir}/resampled/fma_medium" \
         --nj 8 \
         --chunksize 1000
+    # add dataset name to make utt-ids unique
+    awk -v additional="fma_" '{print additional $1, $2, $3}' $RESAMP_SCP_FILE_VALID > ./temp && mv ./temp $RESAMP_SCP_FILE_VALID
 else
     echo "Resampled scp file already exists. Delete ${RESAMP_SCP_FILE_VALID} if you want to re-resample."
 fi
