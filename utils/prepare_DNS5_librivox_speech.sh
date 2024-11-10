@@ -69,8 +69,8 @@ if [ ! -f ${DNSMOS_JSON_FILE} ]; then
         --convert_to_torch True \
         --primary_model "${dnsmos_model_dir}/DNSMOS/sig_bak_ovr.onnx" \
         --p808_model "${dnsmos_model_dir}/DNSMOS/model_v8.onnx" \
-        --nsplits 2 \
-        --job 2
+        --nsplits 1 \
+        --job 1
 else
     echo "DNSMOS json file already exists. Delete ${DNSMOS_JSON_FILE} if you want to re-estimate."
 fi
