@@ -82,7 +82,7 @@ else
 fi
 
 
-RESAMP_SCP_FILE_TRAIN=tmp/fsd50k_noise_resampled_train.scp
+RESAMP_SCP_FILE_TRAIN=fsd50k_noise_resampled_train.scp
 if [ ! -f ${RESAMP_SCP_FILE_TRAIN} ]; then
     echo "[FSD50K-train noise] resampling to estimated audio bandwidth"
     OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \
@@ -96,7 +96,7 @@ else
 fi
 
 
-RESAMP_SCP_FILE_VALID=tmp/fsd50k_noise_resampled_validation.scp
+RESAMP_SCP_FILE_VALID=fsd50k_noise_resampled_validation.scp
 if [ ! -f ${RESAMP_SCP_FILE_VALID} ]; then
     echo "[FSD50K-validation noise] resampling to estimated audio bandwidth"
     OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \

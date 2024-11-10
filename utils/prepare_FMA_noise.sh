@@ -64,7 +64,7 @@ else
     echo "Train/validation data are already split. Delete ${BW_EST_FILE_TRAIN} and/or ${BW_EST_FILE_VALID} if you want to run again."
 fi
 
-RESAMP_SCP_FILE_TRAIN=tmp/fma_noise_resampled_train.scp
+RESAMP_SCP_FILE_TRAIN=fma_noise_resampled_train.scp
 if [ ! -f ${RESAMP_SCP_FILE_TRAIN} ]; then
     echo "[FMA noise] resampling to estimated audio bandwidth"
     OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \
@@ -77,7 +77,7 @@ else
     echo "Resampled scp file already exists. Delete ${RESAMP_SCP_FILE_TRAIN} if you want to re-resample."
 fi
 
-RESAMP_SCP_FILE_VALID=tmp/fma_noise_resampled_validation.scp
+RESAMP_SCP_FILE_VALID=fma_noise_resampled_validation.scp
 if [ ! -f ${RESAMP_SCP_FILE_VALID} ]; then
     echo "[FMA noise] resampling to estimated audio bandwidth"
     OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \
