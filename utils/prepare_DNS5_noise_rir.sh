@@ -73,6 +73,10 @@ tar xf "${output_dir}"/datasets_fullband.impulse_responses_000.tar.bz2 -C "${out
 mkdir -p tmp
 
 BW_EST_FILE=tmp/dns5_noise.json
+BW_EST_FILE_JSON_GZ=datafiles/dns5_noise/dns5_noise.json.gz
+if [ -f ${BW_EST_FILE} ]; then
+    gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
+fi
 if [ ! -f ${BW_EST_FILE} ]; then
     echo "[DNS5 noise and RIR] estimating audio bandwidth"
     OMP_NUM_THREADS=1 python utils/estimate_audio_bandwidth.py \

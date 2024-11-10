@@ -33,7 +33,12 @@ touch "${output_dir}"/download_libritts.done
 # Data preprocessing
 #################################
 mkdir -p tmp
+
 BW_EST_FILE=tmp/libritts_train.json
+BW_EST_FILE_JSON_GZ="datafiles/libritts/libritts_train.json.gz"
+if [ -f ${BW_EST_FILE} ]; then
+    gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
+fi
 if [ ! -f ${BW_EST_FILE} ]; then
     echo "[LibriTTS-train] estimating audio bandwidth"
     OMP_NUM_THREADS=1 python utils/estimate_audio_bandwidth.py \
@@ -60,6 +65,10 @@ else
 fi
 
 BW_EST_FILE=tmp/libritts_validation.json
+BW_EST_FILE_JSON_GZ="datafiles/libritts/libritts_validation.json.gz"
+if [ -f ${BW_EST_FILE} ]; then
+    gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
+fi
 if [ ! -f ${BW_EST_FILE} ]; then
     echo "[LibriTTS-validation] estimating audio bandwidth"
     OMP_NUM_THREADS=1 python utils/estimate_audio_bandwidth.py \

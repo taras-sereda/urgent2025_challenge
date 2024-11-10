@@ -2,7 +2,7 @@
 
 # Set bash to 'debug' mode, it will exit on :
 # -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
-# set -e
+set -e
 set -u
 set -o pipefail
 
@@ -55,6 +55,10 @@ mkdir -p tmp
 
 # NØTE: three files are removed here. They are silent files.
 BW_EST_FILE=tmp/fsd50k_noise.json
+BW_EST_FILE_JSON_GZ="datafiles/fsd50k/fsd50k_noise.json.gz"
+if [ -f ${BW_EST_FILE} ]; then
+    gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
+fi
 if [ ! -f ${BW_EST_FILE} ]; then
     echo "[FSD50K noise] estimating audio bandwidth"
     OMP_NUM_THREADS=1 python utils/estimate_audio_bandwidth.py \

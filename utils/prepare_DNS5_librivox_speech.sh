@@ -7,7 +7,7 @@ set -u
 set -o pipefail
 
 dnsmos_model_dir="./DNSMOS"
-output_dir="./dns5_fullband"
+output_dir="./dns5_fullband" # please do not change this path
 
 echo "=== Preparing DNS5 LibriVox speech data ==="
 if [ ! -d "${dnsmos_model_dir}/DNSMOS" ]; then
@@ -25,6 +25,10 @@ fi
 #################################
 mkdir -p tmp
 BW_EST_FILE=tmp/dns5_clean_read_speech.json
+BW_EST_FILE_JSON_GZ="datafiles/dns5_librivox_speech/dns5_clean_read_speech.json.gz"
+if [ -f ${BW_EST_FILE} ]; then
+    gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
+fi
 if [ ! -f ${BW_EST_FILE} ]; then
     echo "[DNS5 LibriVox] estimating audio bandwidth"
     OMP_NUM_THREADS=1 python utils/estimate_audio_bandwidth.py \
@@ -34,7 +38,8 @@ if [ ! -f ${BW_EST_FILE} ]; then
         --nj 8 \
         --outfile ${BW_EST_FILE}
 else
-    echo "Estimated bandwidth file already exists. Delete ${BW_EST_FILE} if you want to re-estimate."
+    # echo "Estimated bandwidth file already exists. Delete ${BW_EST_FILE} if you want to re-estimate."
+    echo "Estimated bandwidth file already exists ${BW_EST_FILE}."
 fi
 
 RESAMP_SCP_FILE=tmp/dns5_clean_read_speech_resampled.scp
@@ -55,7 +60,7 @@ fi
 # Data filtering based on VAD and DNSMOS
 #########################################
 DNSMOS_JSON_FILE="tmp/dns5_clean_read_speech_resampled_dnsmos.json"
-DNSMOS_GZ_FILE="data/`basename ${DNSMOS_JSON_FILE}`.gz"
+DNSMOS_GZ_FILE="datafiles/dns5_librivox_speech/dns5_clean_read_speech_resampled_dnsmos.json.gz"
 if [ -f ${DNSMOS_GZ_FILE} ]; then
     gunzip -c ${DNSMOS_GZ_FILE} > ${DNSMOS_JSON_FILE}
 fi
