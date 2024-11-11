@@ -19,10 +19,10 @@ if [ ! -e "${output_dir}/download_ears.done" ]; then
     seq -w 001 101 | xargs -I {} -P 8 bash -c '
         X="{}"
         output_dir="$1"
-        echo "Downloading EARS p${X}.zip"
-        curl -s -L https://github.com/facebookresearch/ears_dataset/releases/download/dataset/p${X}.zip -o p${X}.zip
-        unzip -q p${X}.zip -d "$output_dir"
-        rm p${X}.zip
+        echo "Downloading EARS ${output_dir}/p${X}.zip"
+        curl -s -L https://github.com/facebookresearch/ears_dataset/releases/download/dataset/p${X}.zip -o "${output_dir}/p${X}.zip"
+        unzip -q "${output_dir}/p${X}.zip" -d "$output_dir"
+        rm "${output_dir}/p${X}.zip"
     ' _ "$output_dir"
 
     git clone https://github.com/facebookresearch/ears_dataset.git "${output_dir}/ears_scripts"
@@ -30,7 +30,6 @@ else
     echo "Skip downloading EARS as it has already finished"
 fi
 touch "${output_dir}"/download_ears.done
-
 
 
 # Note: train/val split follows the original paper

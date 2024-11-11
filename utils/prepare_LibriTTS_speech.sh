@@ -83,7 +83,7 @@ fi
 
 RESAMP_SCP_FILE=libritts_resampled_validation.scp
 if [ ! -f ${RESAMP_SCP_FILE} ]; then
-    echo "[LibriTTS-train] resampling to estimated audio bandwidth"
+    echo "[LibriTTS-dev] resampling to estimated audio bandwidth"
     OMP_NUM_THREADS=1 python utils/resample_to_estimated_bandwidth.py \
         --bandwidth_data "${BW_EST_FILE}" \
         --out_scpfile "${RESAMP_SCP_FILE}" \

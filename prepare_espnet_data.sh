@@ -230,9 +230,11 @@ if [ ! -e "${output_dir}/tmp/noise_rir.done" ]; then
     # Combine all data for the training set
     cat dns5_noise_resampled_train.scp wham_noise_train.scp fsd50k_noise_resampled_train.scp fma_noise_resampled_train.scp wind_noise_train.scp > "${output_dir}/noise_train.scp"
     mv dns5_noise_resampled_train.scp wham_noise_train.scp fsd50k_noise_resampled_train.scp fma_noise_resampled_train.scp wind_noise_train.scp "${output_dir}/tmp/"
+    # awk '{print $1" "$3}' ...
 
     # Combine all the rir data for the training set
     cat dns5_rirs.scp > "${output_dir}/rir_train.scp"
+    # awk '{print $1" "$3}' ...
     mv dns5_noise_resampled_validation.scp wham_noise_validation.scp fsd50k_noise_resampled_validation.scp fma_noise_resampled_validation.scp wind_noise_validation.scp dns5_rirs.scp "${output_dir}/tmp/"
 fi
 touch "${output_dir}/tmp/noise_rir.done"
