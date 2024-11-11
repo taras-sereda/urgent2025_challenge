@@ -91,43 +91,6 @@ def packet_loss(
     return list(set(packet_loss_indices))
 
 
-def loudness_transition(
-    speech_length,
-    fs,
-    num_peaks,
-    duration_range,
-    peak_db_range,
-):
-    """Returns a list of start, peak, and end indices of loudness transition"""
-    start_list, peak_list, end_list, gain_db_list = [], [], [], []
-    for n in range(num_peaks):
-        transition_duration = np.random.uniform(*duration_range)
-        transition_length = int(transition_duration * fs)
-
-        if transition_length >= speech_length // num_peaks:
-            transition_length = speech_length // num_peaks
-            start_idx = 0
-        else:
-            start_idx = np.random.randint(
-                0, speech_length // num_peaks - transition_length
-            )
-        end_idx = start_idx + transition_length
-
-        # index of the loudness peak
-        peak_idx = np.random.randint(start_idx, end_idx)
-
-        # gain coefficient at the peak point
-        gain_db = np.random.uniform(*peak_db_range)
-        # make it negative with a 50% chance
-        gain_db = gain_db if np.random.random() > 0.5 else -gain_db
-
-        start_list.append(start_idx)
-        end_list.append(end_idx)
-        peak_list.append(peak_idx)
-        gain_db_list.append(gain_db)
-    return start_list, peak_list, end_list, gain_db_list
-
-
 def weighted_sample(population, weights, k, replace=True, rng=np.random):
     weights = np.array(weights)
     weights = weights / weights.sum()
@@ -398,46 +361,24 @@ def process_one_sample(
                 augmentation_config += (
                     f"{augmentation}(min={min_quantile},max={max_quantile})"
                 )
-            elif augmentation == "loudness_transition":
-                num_peaks = np.random.randint(*this_aug["num_peaks"])
-                start_list, peak_list, end_list, gain_db_list = loudness_transition(
-                    speech_length,
-                    fs,
-                    num_peaks,
-                    this_aug["duration"],
-                    this_aug["peak_db"],
-                )
-                augmentation_config += (
-                    f"{augmentation}"
-                    f"(start={start_list},peak={peak_list},"
-                    f"end={end_list},gain_db={gain_db_list})"
-                )
-
-            elif augmentation == "nonflat_freq_res":
-                # low- and high-shelf filters
-                low_shelf_hz = np.random.randint(*this_aug["low_shelf_hz"])
-                high_shelf_hz = np.random.randint(*this_aug["high_shelf_hz"])
-                low_shelf_db = np.random.uniform(*this_aug["low_shelf_db"])
-                high_shelf_db = np.random.uniform(*this_aug["high_shelf_db"])
-
-                # peak filter
-                num_peaks = np.random.randint(*this_aug["num_peaks"])
-                peak_hz = [
-                    np.random.randint(*this_aug["peak_hz"]) for _ in range(num_peaks)
-                ]
-                peak_db = [
-                    np.random.uniform(*this_aug["peak_db"]) for _ in range(num_peaks)
-                ]
-
-                augmentation_config += (
-                    f"{augmentation}"
-                    f"(low_shelf_hz={low_shelf_hz},high_shelf_hz={high_shelf_hz},"
-                    f"low_shelf_db={low_shelf_db},high_shelf_db={high_shelf_db},"
-                    f"peak_hz={peak_hz},peak_db={peak_db})"
-                )
             elif augmentation == "codec":
-                vbr_quality = np.random.uniform(*this_aug["vbr_quality"])
-                augmentation_config += f"{augmentation}(vbr_quality={vbr_quality})"
+                # vbr_quality = np.random.uniform(*this_aug["vbr_quality"])
+                # augmentation_config += f"{augmentation}(vbr_quality={vbr_quality})"
+                codec_config = np.random.choice(this_aug["config"], 1)[0]
+                format, encoder, qscale = (
+                    codec_config["format"],
+                    codec_config["encoder"],
+                    codec_config["qscale"],
+                )
+                if encoder is not None and isinstance(encoder, list):
+                    encoder = np.random.choice(encoder, 1)[0]
+                if qscale is not None and isinstance(qscale, list):
+                    qscale = np.random.randint(*qscale)
+                augmentation_config += (
+                    f"{augmentation}"
+                    f"(format={format},encoder={encoder},qscale={qscale})"
+                )
+
             elif augmentation == "packet_loss":
                 packet_duration_ms = this_aug["packet_duration_ms"]
                 packet_loss_indices = packet_loss(

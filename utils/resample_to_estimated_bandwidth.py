@@ -54,8 +54,8 @@ def resample_to_estimated_bandwidth(
         est_fs = sampling_rates[-1]
 
     subdir = f"{idx // max_files_per_dir:0{num_digits}x}"
-    # outfile = Path(outdir) / subdir / (uid + ".wav")
-    outfile = Path(outdir) / subdir / (uid + ".flac")
+    outfile = Path(outdir) / subdir / (uid + ".wav")
+    # outfile = Path(outdir) / subdir / (uid + ".flac")
 
     if outfile.exists():
         return uid, outfile, est_fs

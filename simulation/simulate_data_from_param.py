@@ -1,45 +1,22 @@
+import ast
 import re
+import subprocess
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
-import subprocess
-import ast
-from copy import deepcopy
 
 import librosa
 import numpy as np
 import scipy
 import soundfile as sf
+import torch
+from espnet2.train.preprocessor import detect_non_silence
+from generate_data_param import get_parser
+from rir_utils import estimate_early_rir
+from torchaudio.io import AudioEffector, CodecConfig
 from tqdm.contrib.concurrent import process_map
 
-from espnet2.train.preprocessor import detect_non_silence
-
-from generate_data_param2 import get_parser
-from rir_utils import estimate_early_rir
-
-from pedalboard import (
-    Bitcrush,
-    Clipping,
-    Convolution,
-    Delay,
-    Distortion,
-    Gain,
-    GSMFullRateCompressor,
-    HighpassFilter,
-    HighShelfFilter,
-    IIRFilter,
-    Invert,
-    LowpassFilter,
-    LowShelfFilter,
-    MP3Compressor,
-    NoiseGate,
-    PeakFilter,
-    Pedalboard,
-    Phaser,
-    PitchShift,
-    Resample,
-)
-
-ffmpeg = "/home/saijo/anaconda3/envs/urgent/bin/ffmpeg"
+ffmpeg = "/path/to/ffmpeg"
 
 
 def buildFFmpegCommand(params):
@@ -71,7 +48,6 @@ def buildFFmpegCommand(params):
         params["output_path"],
     ]
 
-    # return (" ").join(commands_list)
     return commands_list
 
 
@@ -252,59 +228,7 @@ def clipping(speech_sample, min_quantile: float = 0.0, max_quantile: float = 0.9
     return ret
 
 
-def nonflat_frequency_response(
-    speech_sample,
-    fs: int,
-    low_shelf_hz: int,
-    high_shelf_hz: int,
-    low_shelf_db: float,
-    high_shelf_db: float,
-    peak_hz_list: list,
-    peak_db_list: list,
-):
-    response_modules = [
-        LowShelfFilter(cutoff_frequency_hz=low_shelf_hz, gain_db=low_shelf_db),
-        HighShelfFilter(cutoff_frequency_hz=high_shelf_hz, gain_db=high_shelf_db),
-    ]
-
-    for peak_hz, peak_db in zip(peak_hz_list, peak_db_list):
-        response_modules.append(
-            PeakFilter(cutoff_frequency_hz=peak_hz, gain_db=peak_db)
-        )
-
-    response_modules = Pedalboard(response_modules)
-    output = response_modules(speech_sample, fs)
-    return output
-
-
-def loudness_transition(
-    speech_sample,
-    fs: int,
-    start_list: list,
-    peak_list: list,
-    end_list: list,
-    gain_db_list: list,
-):
-
-    gain_envelope = np.ones(speech_sample.shape)
-    for start, peak, end, gain_db in zip(start_list, peak_list, end_list, gain_db_list):
-        start, peak, end, gain_db = int(start), int(peak), int(end), float(gain_db)
-
-        # gain increases (or decreases) from 0.0 to gain_db, between, start and peak
-        gain_start_to_peak_db = np.linspace(0.0, gain_db, peak - start)
-        gain_start_to_peak = 10.0 ** (gain_start_to_peak_db / 20.0)
-        gain_envelope[:, start:peak] = gain_start_to_peak
-
-        # gain decreases (or increases) from gain_db to 0.0, betwee, peak and end
-        gain_peak_to_end_db = np.linspace(gain_db, 0.0, end - peak)
-        gain_peak_to_end = 10.0 ** (gain_peak_to_end_db / 20.0)
-        gain_envelope[:, peak:end] = gain_peak_to_end
-
-    # Apply the gain envelope to the audio signal
-    speech_sample = speech_sample * gain_envelope
-    return speech_sample
-
-
+"""
 def codec_compression(speech_sample, fs: int, vbr_quality: float):
     # if random.random() > 0.5:
     #     module = Pedalboard([GSMFullRateCompressor()])
@@ -318,6 +242,44 @@ def codec_compression(speech_sample, fs: int, vbr_quality: float):
     module = Pedalboard([MP3Compressor(vbr_quality=vbr_quality)])
     output = module(speech_sample, fs)
     return output
+"""
+
+
+def codec_compression(
+    speech_sample,
+    fs: int,
+    format: str,
+    encoder: str = None,
+    qscale: int = None,
+):
+    assert format in ["mp3", "ogg"], format
+    assert encoder in [None, "None", "vorbis", "opus"], encoder
+
+    encoder = None if encoder == "None" else encoder
+    if speech_sample.ndim == 2:
+        speech_sample = speech_sample.T  # (channel, sample) -> (sample, channel)
+    try:
+        module = AudioEffector(
+            format=format,
+            encoder=encoder,
+            codec_config=CodecConfig(qscale=qscale),
+            pad_end=True,
+        )
+        output = module.apply(torch.from_numpy(speech_sample), fs).numpy()
+    except Exception as e:
+        print(format, encoder, qscale, flush=True)
+        print(e, flush=True)
+
+    if output.shape[0] < speech_sample.shape[0]:
+        zeros = np.zeros((speech_sample.shape[0] - output.shape[0], output.shape[1]))
+        output = np.concatenate((output, zeros), axis=0)
+    elif output.shape[0] > speech_sample.shape[0]:
+        output = output[: speech_sample.shape[0]]
+
+    assert speech_sample.shape == output.shape, (speech_sample.shape, output.shape)
+    return (
+        output.T if output.ndim == 2 else output
+    )  # (sample, channel) -> (channel, sample)
 
 
 def packet_loss(
@@ -432,23 +394,6 @@ def process_one_sample(
     # augmentation information, split by /
     augmentations = info["augmentation"].split("/")
 
-    # loudness transition of speech
-    for augmentation in augmentations:
-        if augmentation.startswith("loudness_transition"):
-            match = re.fullmatch(
-                f"loudness_transition\(start=(.*),peak=(.*),end=(.*),gain_db=(.*)\)",
-                augmentation,
-            )
-            start_, peak_, end_, gain_db_ = match.groups()
-            noisy_speech = loudness_transition(
-                noisy_speech,
-                fs,
-                ast.literal_eval(start_),
-                ast.literal_eval(peak_),
-                ast.literal_eval(end_),
-                ast.literal_eval(gain_db_),
-            )
-
     rir_uid = info["rir_uid"]
     if rir_uid != "none":
         rir = rir_dic[rir_uid]
@@ -509,8 +454,6 @@ def process_one_sample(
     for augmentation in augmentations:
         if augmentation == "none" or augmentation == "":
             pass
-        elif augmentation.startswith("loudness_transition"):
-            pass
         elif augmentation.startswith("wind_noise"):
             pass
         elif augmentation.startswith("bandwidth_limitation"):
@@ -523,33 +466,18 @@ def process_one_sample(
             match = re.fullmatch(f"clipping\(min=(.*),max=(.*)\)", augmentation)
             min_, max_ = map(float, match.groups())
             noisy_speech = clipping(noisy_speech, min_quantile=min_, max_quantile=max_)
-        elif augmentation.startswith("nonflat_freq_res"):
-            match = re.fullmatch(
-                f"nonflat_freq_res\(low_shelf_hz=(.*),high_shelf_hz=(.*),low_shelf_db=(.*),high_shelf_db=(.*),peak_hz=(.*),peak_db=(.*)\)",
-                augmentation,
-            )
-            (
-                low_shelf_hz_,
-                high_shelf_hz_,
-                low_shelf_db_,
-                high_shelf_db_,
-                peak_hz_list_,
-                peak_db_list_,
-            ) = match.groups()
-            noisy_speech = nonflat_frequency_response(
-                noisy_speech,
-                fs,
-                int(low_shelf_hz_),
-                int(high_shelf_hz_),
-                float(low_shelf_db_),
-                float(high_shelf_db_),
-                ast.literal_eval(peak_hz_list_),
-                ast.literal_eval(peak_db_list_),
-            )
         elif augmentation.startswith("codec"):
-            match = re.fullmatch(f"codec\(vbr_quality=(.*)\)", augmentation)
-            vbr_quality_ = match.groups()[0]
-            noisy_speech = codec_compression(noisy_speech, fs, float(vbr_quality_))
+            # match = re.fullmatch(f"codec\(vbr_quality=(.*)\)", augmentation)
+            # vbr_quality_ = match.groups()[0]
+            # noisy_speech = codec_compression(noisy_speech, fs, float(vbr_quality_))
+            match = re.fullmatch(
+                f"codec\(format=(.*),encoder=(.*),qscale=(.*)\)", augmentation
+            )
+            format, encoder, qscale = match.groups()
+            noisy_speech = codec_compression(
+                noisy_speech, fs, format=format, encoder=encoder, qscale=int(qscale)
+            )
+
         elif augmentation.startswith("packet_loss"):
             match = re.fullmatch(
                 f"packet_loss\(packet_loss_indices=(.*),packet_duration_ms=(.*)\)",

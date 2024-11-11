@@ -66,7 +66,15 @@ augmentations:
   #   peak_db: [-6, 6]
   codec:
     weight: 1.0
-    vbr_quality: [1.0, 5.0]
+    config:
+      - format: mp3
+        encoder: null
+        qscale: [1, 10]
+      - format: ogg
+        encoder: [vorbis, opus]
+        qscale: [-1, 10]
+
+    # vbr_quality: [1.0, 5.0]
   packet_loss:
     weight: 1.0
     packet_duration_ms: 20

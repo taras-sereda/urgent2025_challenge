@@ -33,12 +33,12 @@ rm ${scp_output_dir}/speech_validation_subset.text.tmp
 
 # generate simulation parameters
 if [ ! -f "simulation_validation/log/meta.tsv" ]; then
-    python simulation/generate_data_param2.py --config conf/simulation_validation.yaml
+    python simulation/generate_data_param.py --config conf/simulation_validation.yaml
 fi
 
 # simulate noisy speech for validation
 # It takes ~30 minutes to finish simulation with nj=8
-OMP_NUM_THREADS=1 python simulation/simulate_data_from_param2.py \
+OMP_NUM_THREADS=1 python simulation/simulate_data_from_param.py \
     --config conf/simulation_validation.yaml \
     --meta_tsv simulation_validation/log/meta.tsv \
     --nj 8 \
