@@ -6,7 +6,6 @@ scipy
 samplerate
 soundfile
 soxr
-# torch
 transformers
 tqdm
 webrtcvad
@@ -31,4 +30,5 @@ phonemizer
 openai-whisper
 
 # for SpeechBERTScore metric
-git+https://github.com/Takaaki-Saeki/DiscreteSpeechMetrics.git
+# install a fork which supoprts multilingual SSL (MHuBERT-147)
+git+https://github.com/kohei0209/DiscreteSpeechMetrics.git
