@@ -1,4 +1,4 @@
-name: urgent_torch2
+name: urgent2025
 channels:
   - pytorch
   - nvidia

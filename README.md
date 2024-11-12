@@ -45,7 +45,7 @@ With minimum specs, expects the whole process to take YYY hours.
 
     ```bash
     conda env create -f environment.yaml
-    conda activate urgent
+    conda activate urgent2025
     ```
 
     > In case of the following error
