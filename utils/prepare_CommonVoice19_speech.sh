@@ -13,9 +13,9 @@ mkdir -p "${output_dir}"
 
 
 langs=("de" "en" "es" "fr" "zh-CN")
+# Please fill in URLs
+# german, english, spanish, french, and chinese (china)
 URLs=(
-    # Please fill in here
-    # german, english, spanish, french, and chinese (china)
 )
 
 echo "=== Preparing CommonVoice data for ${track} ==="
@@ -38,26 +38,28 @@ if [ ! -f "${output_dir}/download_commonvoice.done" ]; then
     done
 
     # download the commonvoice data
-    # all 5 files are downloaded in parallel
+-   # all 5 files are downloaded in parallel
+    org_dir=${PWD}
+    cd $output_dir
     for i in "${!langs[@]}"; do
         echo "${langs[$i]} ${URLs[$i]}"
-    done | xargs -n 2 -P ${!langs[@]} bash -c '
-        lang="$0"
-        URL="$1"
-        if [ ! -f "${output_dir}/cv19.0-${lang}.tar.gz" ]; then
-            wget "$URL" -O "'"${output_dir}"'/cv19.0-${lang}.tar.gz"
-        else
-            echo "${output_dir}/cv19.0-${lang}.tar.gz already exists. Please delete it if you want to download it again."
-        fi
-    ' 
+    done | xargs -n 2 -P 5 bash -c '
+        lang="$1"
+        URL="$2"
+        echo "Downloading for $lang"
+        wget "$URL" -O "cv19.0-${lang}.tar.gz"
+    ' _
+    cd $org_dir
+
+    touch "${output_dir}/download_commonvoice.done"
 fi
-touch "${output_dir}/download_commonvoice.done"
 
 for lang in de en es fr zh-CN; do
     # untar the .tar.gz file
     output_dir_lang="${output_dir}/cv-corpus-19.0-2024-09-13/${lang}"
     if [ ! -d "${output_dir_lang}/clips" ]; then
         echo "[CommonVoice-${lang}] extracting audio files from ${output_dir}/cv19.0-${lang}.tar.gz"
+        # Please do not change "-m 1000"
         python ./utils/tar_extractor.py -m 1000 \
             -i ${output_dir}/cv19.0-${lang}.tar.gz \
             -o ${output_dir} \
@@ -138,7 +140,6 @@ for lang in de en es fr zh-CN; do
 
     done
 done
-
 
 #--------------------------------
 # Output file (for each ${lang} and ${track}):

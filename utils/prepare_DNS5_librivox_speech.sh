@@ -26,7 +26,7 @@ fi
 mkdir -p tmp
 BW_EST_FILE=tmp/dns5_clean_read_speech.json
 BW_EST_FILE_JSON_GZ="datafiles/dns5_librivox_speech/dns5_clean_read_speech.json.gz"
-if [ -f ${BW_EST_FILE} ]; then
+if [ ! -f ${BW_EST_FILE} ]; then
     gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
 fi
 if [ ! -f ${BW_EST_FILE} ]; then

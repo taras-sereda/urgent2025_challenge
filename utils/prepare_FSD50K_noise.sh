@@ -56,7 +56,7 @@ mkdir -p tmp
 # NØTE: three files are removed here. They are silent files.
 BW_EST_FILE=tmp/fsd50k_noise.json
 BW_EST_FILE_JSON_GZ="datafiles/fsd50k/fsd50k_noise.json.gz"
-if [ -f ${BW_EST_FILE} ]; then
+if [ ! -f ${BW_EST_FILE} ]; then
     gunzip -c $BW_EST_FILE_JSON_GZ > $BW_EST_FILE
 fi
 if [ ! -f ${BW_EST_FILE} ]; then

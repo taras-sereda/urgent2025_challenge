@@ -13,9 +13,10 @@ echo "=== Preparing WHAM! noise data ==="
 #################################
 # WHAM! noise (48 kHz, unsegmented)
 #################################
-echo "[WHAM! noise] downloading from https://my-bucket-a8b4b49c25c811ee9a7e8bba05fa24c7.s3.amazonaws.com/high_res_wham.zip"
-wget --continue "https://my-bucket-a8b4b49c25c811ee9a7e8bba05fa24c7.s3.amazonaws.com/high_res_wham.zip" -O "${output_dir}/high_res_wham.zip"
 if [ ! -e "${output_dir}/download_high_res_wham.done" ]; then
+    echo "[WHAM! noise] downloading from https://my-bucket-a8b4b49c25c811ee9a7e8bba05fa24c7.s3.amazonaws.com/high_res_wham.zip"
+    wget --continue "https://my-bucket-a8b4b49c25c811ee9a7e8bba05fa24c7.s3.amazonaws.com/high_res_wham.zip" -O "${output_dir}/high_res_wham.zip"
+
     unzip "${output_dir}/high_res_wham.zip" -d "${output_dir}"
     touch "${output_dir}/download_high_res_wham.done"
 fi
