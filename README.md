@@ -94,13 +94,26 @@ With minimum specs, expects the whole process to take YYY hours.
 
     To simulate wind noise and codec artifacts, our scripts utilize FFmpeg.
 
-    a. Change `/path/to/ffmpeg` in [simulation/simulate_data_from_param.py](https://github.com/kohei0209/urgnet2025/blob/a2fa5ef53f9ef8eab527a37dcb8aca5aae76ac71/simulation/simulate_data_from_param.py#L19) to the path to your ffmpeg.
+    a. Activate your python environment
+
+    b. Get the path to FFmpeg by `which ffmpeg`
+    
+    c. Change `/path/to/ffmpeg` in [simulation/simulate_data_from_param.py](https://github.com/kohei0209/urgnet2025/blob/a2fa5ef53f9ef8eab527a37dcb8aca5aae76ac71/simulation/simulate_data_from_param.py#L19) to the path to your ffmpeg.
 
 5. Run the script
 
     ```bash
     ./prepare_espnet_data.sh
     ```
+
+    **NOTE**: Please do not change `output_dir` in each shell script called in `prepare_{dataset}.sh`. If you want to download datasets to somewhere else, make a symbolic link to there. 
+    ```bash
+    # example when you want to download FSD50K noise to /path/to/somewhere
+    # prepare_fsd50k_noise.sh specifies ./fsd50k as output_dir, so make a symbolic link from /path/to/somewhere to ./fsd50k
+    mkdir -p /path/to/somewhere
+    ln -s /path/to/somewhere ./fsd50k
+    ```
+
 
 6. Install eSpeak-NG (used for the phoneme similarity metric computation)
    - Follow the instructions in https://github.com/espeak-ng/espeak-ng/blob/master/docs/guide.md#linux
