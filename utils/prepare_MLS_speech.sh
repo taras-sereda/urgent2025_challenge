@@ -81,8 +81,8 @@ for lang in "${langs[@]}"; do
         fi
 
         echo "[MLS-${lang}-${split_track}] preparing data files"
-        transcript_file_path=datafiles/${lang}_${split}_transcripts.txt
-        gunzip -c datafiles/${lang}_${split}_transcripts.gz > $transcript_file_path
+        transcript_file_path=datafiles/mls/${lang}_${split}_transcripts.txt
+        gunzip -c datafiles/mls/${lang}_${split}_transcripts.gz > $transcript_file_path
 
         # organize the scp file
         FINAL_SCP_FILE=mls_${lang}_resampled_${split_name}.scp
