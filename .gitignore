@@ -25,22 +25,21 @@ check_shellcheck*
 du*
 data/
 
-commonvoice
-datasets_cv11_en
-dns5_fullband
+commonvoice/
+datasets_cv11_en/
+dns5_fullband/
 DNSMOS/
-ears
-fma
-fsd50k
-libritts*
-mls*
+ears/
+fma/
+fsd50k/
+libritts/
+mls_segments/
 simulation_*/
 sph2pipe-2.5/
-sph2pipe
+sph2pipe*
 vctk/
-wham_noise_48k
+wham_noise_48k/
 wsj/
-lib.old/
-utils2/
+simulation/SC-Wind-Noise-Generator/
 
 !datafiles/*
