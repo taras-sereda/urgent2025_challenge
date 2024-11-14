@@ -31,4 +31,5 @@ openai-whisper
 
 # for SpeechBERTScore metric
 # install a fork which supoprts multilingual SSL (MHuBERT-147)
-git+https://github.com/kohei0209/DiscreteSpeechMetrics.git
+# Removed pypesq dependency as we do not use it and it sometimes cause a problem when installing
+git+https://github.com/kohei0209/DiscreteSpeechMetrics.git@mhubert_wo_pypesq
