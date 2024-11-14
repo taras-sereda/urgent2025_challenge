@@ -41,7 +41,7 @@ With minimum specs, expects the whole process to take YYY hours.
     ```
 
 1. Install environmemnt. Python 3.10 and Torch 2.0.1+ are recommended.
-   With Anaconda, just run
+   With Conda, just run
 
     ```bash
     conda env create -f environment.yaml
