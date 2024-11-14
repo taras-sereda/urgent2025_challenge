@@ -5,10 +5,8 @@ import librosa
 import numpy as np
 import torch
 from tqdm import tqdm
-from wvmos import get_wvmos
 
-
-METRICS = ("UTMOS", "WV_MOS")
+METRICS = ("UTMOS",)
 
 
 def str2bool(value: str) -> bool:
@@ -31,19 +29,6 @@ def utmos_metric(model, audio_path):
     wave = torch.from_numpy(wave).unsqueeze(0).to(device=model.device)
     utmos_score = model(wave, sr)
     return float(utmos_score.cpu().item())
-
-
-def wvmos_metric(model, audio_path):
-    """Calculate the WV-MOS metric.
-
-    Args:
-        model (torch.nn.Module): WV-MOS model
-        audio_path: path to the enhanced signal
-    Returns:
-        dnsmos (float): UTMOS value between [1, 5]
-    """
-    wvmos_score = model.calculate_one(audio_path)
-    return float(wvmos_score)
 
 
 ################################################################
@@ -78,11 +63,10 @@ def main(args):
         "tarepan/SpeechMOS:v1.2.0", args.utmos_tag, trust_repo=True
     ).to(device=args.device)
     utmos_model.device = args.device
-    wvmos_model = get_wvmos(cuda=True)
     ret = []
     for uid, inf_audio in tqdm(data_pairs):
         _, score = process_one_pair(
-            (uid, inf_audio), utmos_model=utmos_model, wvmos_model=wvmos_model
+            (uid, inf_audio), utmos_model=utmos_model
         )
         ret.append((uid, score))
         for metric, value in score.items():
@@ -101,15 +85,13 @@ def main(args):
         )
 
 
-def process_one_pair(data_pair, utmos_model=None, wvmos_model=None):
+def process_one_pair(data_pair, utmos_model=None):
     uid, inf_path = data_pair
 
     scores = {}
     for metric in METRICS:
         if metric == "UTMOS":
             scores[metric] = utmos_metric(utmos_model, inf_path)
-        elif metric == "WV_MOS":
-            scores[metric] = wvmos_metric(wvmos_model, inf_path)
         else:
             raise NotImplementedError(metric)
 
