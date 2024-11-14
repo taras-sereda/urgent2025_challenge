@@ -1,11 +1,10 @@
+import warnings
 from distutils.util import strtobool
 from pathlib import Path
 
 import numpy as np
-from tqdm import tqdm
-
 from nisqa_utils import load_nisqa_model, predict_nisqa
-
+from tqdm import tqdm
 
 METRICS = ("NISQA_MOS",)
 
@@ -26,7 +25,9 @@ def nisqa_metric(model, audio_path):
     Returns:
         dnsmos (float): NISQA MOS value between [1, 5]
     """
-    nisqa_score = predict_nisqa(model, audio_path)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        nisqa_score = predict_nisqa(model, audio_path)
     return float(nisqa_score["mos_pred"])
 
 
