@@ -4,10 +4,8 @@ import numpy as np
 import soundfile as sf
 import soxr
 import torch
-from tqdm import tqdm
-
 from discrete_speech_metrics import SpeechBERTScore as SBS
-
+from tqdm import tqdm
 
 METRICS = ("SpeechBERTScore",)
 TARGET_FS = 16000
@@ -27,7 +25,7 @@ class SpeechBERTScore:
 
     def __init__(self, device="cpu"):
         self.speech_bert_score = SBS(
-            sr=TARGET_FS, model_type="hubert-base", layer=8, use_gpu="cuda" in device
+            sr=TARGET_FS, model_type="mhubert-147", layer=8, use_gpu="cuda" in device
         )
 
     def __call__(self, reference: np.ndarray, sample: np.ndarray) -> float:
